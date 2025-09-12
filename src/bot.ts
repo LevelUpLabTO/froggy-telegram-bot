@@ -8,19 +8,39 @@ const bot = new Bot(botToken);
 bot.command("start", (ctx) => ctx.reply("Welcome! Up and running."));
 bot.command("freegames", async (ctx) => {
   const games = await fetchFreeGames();
-  ctx.reply(games, { parse_mode: 'MarkdownV2' });
+  ctx.reply(games, {
+    parse_mode: 'MarkdownV2',
+    link_preview_options: { is_disabled: true }
+  });
+});
+bot.command("register", (ctx) => {
+  // TODO: Save chatId to database or file for future messages
+  console.log(`Registration request for chatId: ${ctx.chatId}`);
+  ctx.reply("You have been registered to receive free game notifications!");
 });
 
 // Handle other messages
-bot.on("message", (ctx) => ctx.reply("Got another message!"));
+bot.on("message", (ctx) =>
+{
+  console.log(`Msg: ${ctx.message.text} | ChatId: ${ctx.chatId}`);
+  //ctx.reply("Message received!")
+});
 
-// Start the bot
-bot.start();
+//bot.start();
+sendFreeGames(); // Send free games on startup
 
+
+async function sendFreeGames() {
+  const games = await fetchFreeGames();
+  await sendMessage(games);
+}
 
 async function sendMessage(text: string) {
   if (chatId) {
-    await bot.api.sendMessage(chatId, text);
+    await bot.api.sendMessage(chatId, text, {
+      parse_mode: 'MarkdownV2',
+      link_preview_options: { is_disabled: true }
+    });
   }
 }
 
@@ -29,13 +49,12 @@ async function fetchFreeGames(): Promise<string> {
     const epic = new EpicFreeGames({
       country: 'US',       // your region
       locale: 'en-US',     // language
-      includeAll: false     // include upcoming free games too
+      includeAll: false    // include upcoming free games too
     });
 
     const games = await epic.getGames();
-
     if (!games.currentGames || games.currentGames.length === 0) {
-     return "No free games currently available.";
+     return "No free games are currently available.";
     }
 
     let message = '*Current Free Games*\n\n';
