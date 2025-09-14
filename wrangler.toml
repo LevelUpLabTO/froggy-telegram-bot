@@ -1,7 +1,7 @@
 name = "froggy-telegram-bot"
-main = "dist/bot.js"
-compatibility_date = "2025-09-14"
+main = "src/bot.ts"
+compatibility_date = "2025-09-06"
 
 [triggers]
-# Ogni giovedì alle 17:00 (UTC)
+# Every Thursday at 17:00 (UTC)
 crons = ["0 17 * * 4"]
