@@ -12,16 +12,17 @@ export interface Env {
 
 export default {
   async fetch(request: Request, env: Env, ctx: any): Promise<Response> {
-    console.log(`Request method: ${request.method}, URL: ${request.url}`);
+    if (request.method !== "POST") {
+      return new Response("Method Not Allowed", { status: 405 });
+    }
     
     const bot = createBot(env.BOT_TOKEN);
-    await webhookCallback(bot, "cloudflare-mod")(request);
-    return new Response("OK", { status: 200 });
+    return webhookCallback(bot, "cloudflare-mod")(request);
   },
 
   async scheduled(controller: ScheduledController, env: Env, ctx: any): Promise<void> {
     const bot = createBot(env.BOT_TOKEN);
-    sendFreeGames(bot, env.FREE_GAMES_CHAT_ID);
+    ctx.waitUntil(sendFreeGames(bot, env.FREE_GAMES_CHAT_ID));
   },
 };
 
@@ -29,30 +30,30 @@ export default {
 function createBot(botToken: string): Bot {
   const bot = new Bot(botToken);
 
-  bot.command("start", (ctx) => ctx.reply("Welcome! Up and running."));
+  bot.command("start", async (ctx) => await ctx.reply("Welcome! Up and running."));
   bot.command("freegames", async (ctx) => {
     const games = await fetchFreeGames();
-    ctx.reply(games, {
+    await ctx.reply(games, {
       parse_mode: 'MarkdownV2',
       link_preview_options: { is_disabled: true }
     });
   });
-  bot.command("sub_freegames", (ctx) => {
+  bot.command("sub_freegames", async (ctx) => {
     // TODO: Save chatId to database or file for future messages
     console.log(`Free games registration request for chatId: ${ctx.chatId}`);
-    ctx.reply("You have been registered to receive free game notifications!");
+    await ctx.reply("You have been registered to receive free game notifications!");
   });
-  bot.command("sub_events", (ctx) => {
+  bot.command("sub_events", async (ctx) => {
     // TODO: Save chatId to database or file for future messages
     console.log(`Events registration request for chatId: ${ctx.chatId}`);
-    ctx.reply("You have been registered to receive event notifications!");
+    await ctx.reply("You have been registered to receive event notifications!");
   });
 
   // Handle other messages
-  bot.on("message", (ctx) =>
+  bot.on("message", async (ctx) =>
   {
     console.log(`Msg: ${ctx.message.text} | ChatId: ${ctx.chatId}`);
-    //ctx.reply("Message received!")
+    //await ctx.reply("Message received!")
   });
 
   return bot;
