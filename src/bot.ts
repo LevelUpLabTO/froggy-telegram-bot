@@ -7,8 +7,7 @@ import { D1Database, ScheduledController } from "@cloudflare/workers-types";
 export interface Env {
   DB: D1Database;
   BOT_TOKEN: string;
-  FREE_GAMES_CHAT_ID: string;
-  EVENTS_CHAT_ID: string;
+  DEV_API_KEY: string;
 }
 
 interface FreeGameRow {
@@ -34,6 +33,10 @@ export default {
       return new Response("Method Not Allowed", { status: 405 });
     }
     
+    if (isDevRequest(request)) {
+      return performDevActions(request, env);
+    }
+
     const bot = createBot(env);
     return webhookCallback(bot, "cloudflare-mod")(request);
   },
@@ -48,17 +51,11 @@ export default {
 function createBot(env: Env): Bot {
   const bot = new Bot(env.BOT_TOKEN);
 
-  bot.command("start", async (ctx) => await ctx.reply("Welcome! Up and running.\nUse /freegames to get the latest free games.\nUse /start_freegames to subscribe to free game notifications.\nUse /stop_freegames to unsubscribe."));
+  bot.command("start", async (ctx) => await ctx.reply("Welcome!\n/freegames to get the latest free games.\n/start_freegames to subscribe to free game notifications.\n/stop_freegames to unsubscribe."));
 
   bot.command("freegames", async (ctx) => {
     const games = await fetchFreeGames();
     await ctx.reply(games, messageOptions);
-  });
-
-  bot.command("debug_sendgames", async (ctx) => {
-    sendFreeGames(bot, env);
-    let freeGameSubsCount = await countSubscribers(env.DB, freeGamesTable);
-    await ctx.reply(`Sent free games to ${freeGameSubsCount} subscribed chats.`);
   });
 
   bot.command("start_freegames", async (ctx) => {
@@ -105,4 +102,32 @@ async function sendToSubscribers<T extends { chat_id: number }>(
 
 async function sendMessage(bot: Bot, chatId: string, text: string) {
   await bot.api.sendMessage(chatId, text, messageOptions);
+}
+
+function isDevRequest(request: Request): boolean {
+  const url = new URL(request.url);
+  return url.pathname.startsWith("/dev");
+}
+
+async function performDevActions(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+
+  const authHeader = request.headers.get("dev-api-key");
+  if (authHeader !== env.DEV_API_KEY) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  if (url.pathname === "/dev/sendgames") {
+    try {
+      await sendFreeGames(createBot(env), env);
+    }
+    catch (err) {
+      return new Response(`Error sending free games: ${err}`, { status: 500 });
+    }
+    
+    const freeGameSubsCount = await countSubscribers(env.DB, freeGamesTable);
+    return new Response(`Sent free games to ${freeGameSubsCount} subscribers.`);
+  }
+  
+  return new Response("Dev command not found.", { status: 404 });
 }
