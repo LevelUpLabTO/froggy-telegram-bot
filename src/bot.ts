@@ -1,7 +1,8 @@
-import { Bot, webhookCallback } from "grammy";
+import { Bot, GrammyError, HttpError, webhookCallback } from "grammy";
+import { D1Database, ScheduledController } from "@cloudflare/workers-types";
 import { subscribe, unsubscribe, getAllSubscribers, countSubscribers } from "./db-helpers.js";
 import { fetchFreeGames } from "./game-finder.js";
-import { D1Database, ScheduledController } from "@cloudflare/workers-types";
+import { WELCOME_MESSAGE, HELP_MESSAGE } from "./messages.js";
 
 
 export interface Env {
@@ -51,7 +52,29 @@ export default {
 function createBot(env: Env): Bot {
   const bot = new Bot(env.BOT_TOKEN);
 
-  bot.command("start", async (ctx) => await ctx.reply("Welcome!\n/freegames to get the latest free games.\n/start_freegames to subscribe to free game notifications.\n/stop_freegames to unsubscribe."));
+  bot.catch((err) => {
+    const ctx = err.ctx;
+    console.error(`An error occurred during bot update ${ctx.update.update_id}:`);
+    const e = err.error;
+
+    if (e instanceof GrammyError) {
+      console.error("Request error:", e.description);
+    } else if (e instanceof HttpError) {
+      console.error("Cannot connect to Telegram servers:", e);
+    } else {
+      console.error("Unknown error:", e);
+    }
+
+    ctx.reply("An error occurred while processing your request.");
+  });
+
+  bot.command("start", async (ctx) => {
+      await ctx.reply(WELCOME_MESSAGE, messageOptions);
+  });
+
+  bot.command("help", async (ctx) => {
+      await ctx.reply(HELP_MESSAGE, messageOptions);
+  });
 
   bot.command("freegames", async (ctx) => {
     const games = await fetchFreeGames();

@@ -1,4 +1,5 @@
 import { EpicFreeGames } from 'epic-free-games';
+import { escapeMarkdownV2 } from "./md-helpers.js";
 
 export async function fetchFreeGames(): Promise<string> {
   try {
@@ -10,7 +11,7 @@ export async function fetchFreeGames(): Promise<string> {
 
     const games = await epic.getGames();
     if (!games.currentGames || games.currentGames.length === 0) {
-     return "No free games are currently available.";
+      return "No free games are currently available.";
     }
 
     let message = '*Current Free Games*\n\n';
@@ -18,7 +19,7 @@ export async function fetchFreeGames(): Promise<string> {
     games.currentGames.forEach(game => {
       const url = null;  //`https://store.epicgames.com/en-US/p/${game.urlSlug}`;
       const title = `[${game.title}](${url})`;
-      const metadata =  escapeMarkdownV2(` - (${game.price.totalPrice.fmtPrice.originalPrice})`);
+      const metadata =  escapeMarkdownV2(` – (${game.price.totalPrice.fmtPrice.originalPrice})`);
 
       message += `• ${title}${metadata}\n`;
     });
@@ -30,9 +31,4 @@ export async function fetchFreeGames(): Promise<string> {
     console.error(errorMessage);
     return errorMessage;
   }
-}
-
-function escapeMarkdownV2(text: string): string {
-  const specialChars = /[_*\[\]()~`>#+-=|{}.!]/g;
-  return text.replace(specialChars, '\\$&');
 }

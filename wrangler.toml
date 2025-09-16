@@ -10,3 +10,7 @@ crons = ["0 17 * * 4"]
 binding = "DB"
 database_name = "level-up-database"
 database_id = "c4887c48-b00b-4fd9-8547-1fe06e323ff9"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
