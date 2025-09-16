@@ -1,4 +1,5 @@
 import { Bot, webhookCallback } from "grammy";
+import { subscribe, unsubscribe, getAllSubscribers, countSubscribers } from "./db-helpers.js";
 import { fetchFreeGames } from "./game-finder.js";
 import { D1Database, ScheduledController } from "@cloudflare/workers-types";
 
@@ -17,6 +18,14 @@ interface FreeGameRow {
 interface EventRow {
   chat_id: number;
 }
+
+
+const freeGamesTable = "freegames_subscriptions";
+const eventsTable = "events_subscriptions";
+const messageOptions = {
+  parse_mode: 'MarkdownV2' as const,
+  link_preview_options: { is_disabled: true } as const,
+};
 
 
 export default {
@@ -43,44 +52,29 @@ function createBot(env: Env): Bot {
 
   bot.command("freegames", async (ctx) => {
     const games = await fetchFreeGames();
-    await ctx.reply(games, {
-      parse_mode: 'MarkdownV2',
-      link_preview_options: { is_disabled: true }
-    });
+    await ctx.reply(games, messageOptions);
   });
 
   bot.command("debug_sendgames", async (ctx) => {
     sendFreeGames(bot, env);
-    let freeGameSubsCount = await countFreeGamesSubscribers(env);
+    let freeGameSubsCount = await countSubscribers(env.DB, freeGamesTable);
     await ctx.reply(`Sent free games to ${freeGameSubsCount} subscribed chats.`);
   });
 
   bot.command("start_freegames", async (ctx) => {
-    await env.DB.prepare(
-      "INSERT OR IGNORE INTO freegames_subscriptions (chat_id) VALUES (?)"
-    ).bind(ctx.chat.id).run();
-    await ctx.reply("You have been registered to receive free game notifications!");
+    await subscribe(ctx, env.DB, freeGamesTable, "free game");
   });
 
   bot.command("stop_freegames", async (ctx) => {
-    await env.DB.prepare(
-      "DELETE FROM freegames_subscriptions WHERE chat_id = ?"
-    ).bind(ctx.chat.id).run();
-    await ctx.reply("You have been unsubscribed from free game notifications.");
+    await unsubscribe(ctx, env.DB, freeGamesTable,"free game");
   });
 
   bot.command("start_events", async (ctx) => {
-    await env.DB.prepare(
-      "INSERT OR IGNORE INTO events_subscriptions (chat_id) VALUES (?)"
-    ).bind(ctx.chat.id).run();
-    await ctx.reply("You have been registered to receive event notifications!");
+    await subscribe(ctx, env.DB, eventsTable, "event");
   });
 
   bot.command("stop_events", async (ctx) => {
-    await env.DB.prepare(
-      "DELETE FROM events_subscriptions WHERE chat_id = ?"
-    ).bind(ctx.chat.id).run();
-    await ctx.reply("You have been unsubscribed from event notifications.");
+    await unsubscribe(ctx, env.DB, eventsTable, "event");
   });
 
   return bot;
@@ -89,32 +83,26 @@ function createBot(env: Env): Bot {
 
 async function sendFreeGames(bot: Bot, env: Env) {
   const games = await fetchFreeGames();
+  await sendToSubscribers<FreeGameRow>(bot, env.DB, freeGamesTable, games);
+}
 
-  const { results } = await env.DB.prepare(
-    "SELECT chat_id FROM freegames_subscriptions"
-  ).all<FreeGameRow>();
+async function sendToSubscribers<T extends { chat_id: number }>(
+  bot: Bot,
+  db: D1Database,
+  table: string,
+  text: string
+) {
+  const subs = await getAllSubscribers<T>(db, table);
 
-  await Promise.all(results.map(async (row) => {
+  await Promise.all(subs.map(async (row) => {
     try {
-      await sendMessage(bot, String(row.chat_id), games);
+      await sendMessage(bot, String(row.chat_id), text);
     } catch (err) {
       console.error(`Failed to send to chatId ${row.chat_id}:`, err);
     }
   }));
 }
 
-
 async function sendMessage(bot: Bot, chatId: string, text: string) {
-  await bot.api.sendMessage(chatId, text, {
-    parse_mode: 'MarkdownV2',
-    link_preview_options: { is_disabled: true }
-  });
-}
-
-async function countFreeGamesSubscribers(env: Env): Promise<number> {
-  const { results } = await env.DB.prepare(
-    "SELECT COUNT(*) as count FROM freegames_subscriptions"
-  ).all<{ count: number }>();
-
-  return results[0]?.count ?? 0;
+  await bot.api.sendMessage(chatId, text, messageOptions);
 }
