@@ -2,7 +2,6 @@ import { D1Database } from "@cloudflare/workers-types/experimental";
 
 interface ChatsRow {
   id: number;
-  name: string;
   created_at: string;
   updated_at: string;
   free_games: boolean;
@@ -33,12 +32,11 @@ export async function subscribe(
     await db.prepare(`INSERT OR IGNORE INTO ${tableName} (id) VALUES (?)`)
       .bind(ctx.chat.id)
       .run();
+    
+    // Set the subscription field to 1
+    await setBoolField(ctx, db, subType, true);
 
-    await db.prepare(`UPDATE ${tableName} SET ${subType} = 1 WHERE id = ?`)
-      .bind(ctx.chat.id)
-      .run();
-
-   await ctx.reply(`You have been subscribed to receive ${subText} notifications!`);
+    await ctx.reply(`You have been subscribed to receive ${subText} notifications!`);
   }
 }
 
@@ -56,9 +54,7 @@ export async function unsubscribe(
   }
 
   // 1. Set the subscription field to 0
-  await db.prepare(`UPDATE ${tableName} SET ${subType} = 0 WHERE id = ?`)
-    .bind(ctx.chat.id)
-    .run();
+  await setBoolField(ctx, db, subType, false);
 
   // 2. Check all the flag fields
   const { results } = await db.prepare(
@@ -102,6 +98,23 @@ async function isSubscribed(db: D1Database, subType: SubscriptionType, chatId: n
     .all<{ "1": number }>();
   
   return results.length > 0;
+}
+
+async function setBoolField(
+  ctx: any,
+  db: D1Database,
+  subType: SubscriptionType,
+  value: boolean
+) {
+  const today = new Date().toISOString().split("T")[0];  // yyyy-mm-dd
+
+  await db.prepare(`
+    UPDATE ${tableName}
+    SET ${subType} = ?, updated_at = ?
+    WHERE id = ?
+  `)
+  .bind(value ? 1 : 0, today, ctx.chat.id)
+  .run();
 }
 
 function getSubText(subType: SubscriptionType): string {
