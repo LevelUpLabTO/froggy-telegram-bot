@@ -3,6 +3,8 @@ import { D1Database, ScheduledController } from "@cloudflare/workers-types";
 import { subscribe, unsubscribe, getAllSubscribers, countSubscribers } from "./db-helpers.js";
 import { fetchFreeGames } from "./game-finder.js";
 import { WELCOME_MESSAGE, HELP_MESSAGE } from "./messages.js";
+import { CRON_LEVEL_UP_EVENTS, CRON_FREE_GAMES } from "./cron-triggers.js";
+import { escapeMarkdownV2IgnoreLinks as escMD } from "./md-helpers.js";
 
 
 export interface Env {
@@ -11,11 +13,11 @@ export interface Env {
   DEV_API_KEY: string;
 }
 
-interface FreeGameRow {
+interface EventRow {
   chat_id: number;
 }
 
-interface EventRow {
+interface FreeGameRow {
   chat_id: number;
 }
 
@@ -44,7 +46,17 @@ export default {
 
   async scheduled(controller: ScheduledController, env: Env, ctx: any): Promise<void> {
     const bot = createBot(env);
-    ctx.waitUntil(sendFreeGames(bot, env));
+
+    switch (controller.cron) {
+      case CRON_LEVEL_UP_EVENTS:
+        ctx.waitUntil(sendLevelUpEvents(bot, env));
+        break;
+      case CRON_FREE_GAMES:
+        ctx.waitUntil(sendFreeGames(bot, env));
+        break;
+      default:
+        console.log(`No scheduled task for cron: ${controller.cron}`);
+    }
   },
 };
 
@@ -89,6 +101,10 @@ function createBot(env: Env): Bot {
     await unsubscribe(ctx, env.DB, freeGamesTable,"free game");
   });
 
+  bot.command("events", async (ctx) => {
+    await ctx.reply(escMD("⚠️ Event reminders are currently in development and not yet available."), messageOptions);
+  });
+
   bot.command("start_events", async (ctx) => {
     await subscribe(ctx, env.DB, eventsTable, "event");
   });
@@ -100,6 +116,11 @@ function createBot(env: Env): Bot {
   return bot;
 }
 
+async function sendLevelUpEvents(bot: Bot, env: Env) {
+  //TODO: implement event fetching
+  const events = escMD("Scheduled message:\n⚠️ Event reminders are currently in development and not yet available.");
+  await sendToSubscribers<EventRow>(bot, env.DB, eventsTable, events);
+}
 
 async function sendFreeGames(bot: Bot, env: Env) {
   const games = await fetchFreeGames();
@@ -138,6 +159,18 @@ async function performDevActions(request: Request, env: Env): Promise<Response> 
   const authHeader = request.headers.get("dev-api-key");
   if (authHeader !== env.DEV_API_KEY) {
     return new Response("Unauthorized", { status: 401 });
+  }
+
+  if (url.pathname === "/dev/sendevents") {
+    try {
+      await sendLevelUpEvents(createBot(env), env);
+    }
+    catch (err) {
+      return new Response(`Error sending LevelUp events: ${err}`, { status: 500 });
+    }
+
+    const eventSubsCount = await countSubscribers(env.DB, eventsTable);
+    return new Response(`Sent events to ${eventSubsCount} subscribers.`);
   }
 
   if (url.pathname === "/dev/sendgames") {

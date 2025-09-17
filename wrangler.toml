@@ -2,9 +2,12 @@ name = "froggy-telegram-bot"
 main = "src/bot.ts"
 compatibility_date = "2025-09-06"
 
+# IMPORTANT: Remember to update cron-triggers.ts with the same cron expressions
 [triggers]
-# Every Thursday at 17:00 (UTC)
-crons = ["0 17 * * 4"]
+crons = [
+    "0 15 * * *",
+    "0 17 * * 5",
+    ]
 
 [[d1_databases]]
 binding = "DB"
