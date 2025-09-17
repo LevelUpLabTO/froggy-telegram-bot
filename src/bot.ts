@@ -1,6 +1,6 @@
 import { Bot, GrammyError, HttpError, webhookCallback } from "grammy";
 import { D1Database, ScheduledController } from "@cloudflare/workers-types";
-import { subscribe, unsubscribe, getAllSubscribers, countSubscribers } from "./db-helpers.js";
+import { SubscriptionType, subscribe, unsubscribe, getAllSubscribers, countSubscribers } from "./db-helpers.js";
 import { fetchFreeGames } from "./game-finder.js";
 import { WELCOME_MESSAGE, HELP_MESSAGE } from "./messages.js";
 import { CRON_LEVEL_UP_EVENTS, CRON_FREE_GAMES } from "./cron-triggers.js";
@@ -13,17 +13,6 @@ export interface Env {
   DEV_API_KEY: string;
 }
 
-interface EventRow {
-  chat_id: number;
-}
-
-interface FreeGameRow {
-  chat_id: number;
-}
-
-
-const freeGamesTable = "freegames_subscriptions";
-const eventsTable = "events_subscriptions";
 const messageOptions = {
   parse_mode: 'MarkdownV2' as const,
   link_preview_options: { is_disabled: true } as const,
@@ -94,11 +83,11 @@ function createBot(env: Env): Bot {
   });
 
   bot.command("start_freegames", async (ctx) => {
-    await subscribe(ctx, env.DB, freeGamesTable, "free game");
+    await subscribe(ctx, env.DB, SubscriptionType.FREE_GAMES);
   });
 
   bot.command("stop_freegames", async (ctx) => {
-    await unsubscribe(ctx, env.DB, freeGamesTable,"free game");
+    await unsubscribe(ctx, env.DB, SubscriptionType.FREE_GAMES);
   });
 
   bot.command("events", async (ctx) => {
@@ -106,11 +95,11 @@ function createBot(env: Env): Bot {
   });
 
   bot.command("start_events", async (ctx) => {
-    await subscribe(ctx, env.DB, eventsTable, "event");
+    await subscribe(ctx, env.DB, SubscriptionType.EVENTS_LUL);
   });
 
   bot.command("stop_events", async (ctx) => {
-    await unsubscribe(ctx, env.DB, eventsTable, "event");
+    await unsubscribe(ctx, env.DB, SubscriptionType.EVENTS_LUL);
   });
 
   return bot;
@@ -119,27 +108,27 @@ function createBot(env: Env): Bot {
 async function sendLevelUpEvents(bot: Bot, env: Env) {
   //TODO: implement event fetching
   const events = escMD("Scheduled message:\n⚠️ Event reminders are currently in development and not yet available.");
-  await sendToSubscribers<EventRow>(bot, env.DB, eventsTable, events);
+  await sendToSubscribers(bot, env.DB, SubscriptionType.EVENTS_LUL, events);
 }
 
 async function sendFreeGames(bot: Bot, env: Env) {
   const games = await fetchFreeGames();
-  await sendToSubscribers<FreeGameRow>(bot, env.DB, freeGamesTable, games);
+  await sendToSubscribers(bot, env.DB, SubscriptionType.FREE_GAMES, games);
 }
 
-async function sendToSubscribers<T extends { chat_id: number }>(
+async function sendToSubscribers(
   bot: Bot,
   db: D1Database,
-  table: string,
+  subType: SubscriptionType,
   text: string
 ) {
-  const subs = await getAllSubscribers<T>(db, table);
+  const subs = await getAllSubscribers(db, subType);
 
   await Promise.all(subs.map(async (row) => {
     try {
-      await sendMessage(bot, String(row.chat_id), text);
+      await sendMessage(bot, String(row.id), text);
     } catch (err) {
-      console.error(`Failed to send to chatId ${row.chat_id}:`, err);
+      console.error(`Failed to send to chatId ${row.id}:`, err);
     }
   }));
 }
@@ -169,7 +158,7 @@ async function performDevActions(request: Request, env: Env): Promise<Response> 
       return new Response(`Error sending LevelUp events: ${err}`, { status: 500 });
     }
 
-    const eventSubsCount = await countSubscribers(env.DB, eventsTable);
+    const eventSubsCount = await countSubscribers(env.DB, SubscriptionType.EVENTS_LUL);
     return new Response(`Sent events to ${eventSubsCount} subscribers.`);
   }
 
@@ -181,7 +170,7 @@ async function performDevActions(request: Request, env: Env): Promise<Response> 
       return new Response(`Error sending free games: ${err}`, { status: 500 });
     }
     
-    const freeGameSubsCount = await countSubscribers(env.DB, freeGamesTable);
+    const freeGameSubsCount = await countSubscribers(env.DB, SubscriptionType.FREE_GAMES);
     return new Response(`Sent free games to ${freeGameSubsCount} subscribers.`);
   }
   
