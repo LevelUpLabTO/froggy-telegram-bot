@@ -5,6 +5,7 @@ import { fetchFreeGames } from "./game-finder.js";
 import { WELCOME_MESSAGE, HELP_MESSAGE } from "./messages.js";
 import { CRON_LEVEL_UP_EVENTS, CRON_FREE_GAMES } from "./cron-triggers.js";
 import { escapeMarkdownV2IgnoreLinks as escMD } from "./md-helpers.js";
+import { isDevRequest, performDevActions } from "./dev-tools.js";
 
 
 export interface Env {
@@ -24,12 +25,13 @@ export default {
     if (request.method !== "POST") {
       return new Response("Method Not Allowed", { status: 405 });
     }
-    
-    if (isDevRequest(request)) {
-      return performDevActions(request, env);
-    }
 
     const bot = createBot(env);
+    
+    if (isDevRequest(request)) {
+      return performDevActions(request, bot, env);
+    }
+    
     return webhookCallback(bot, "cloudflare-mod")(request);
   },
 
@@ -37,14 +39,9 @@ export default {
     const bot = createBot(env);
 
     switch (controller.cron) {
-      case CRON_LEVEL_UP_EVENTS:
-        ctx.waitUntil(sendLevelUpEvents(bot, env));
-        break;
-      case CRON_FREE_GAMES:
-        ctx.waitUntil(sendFreeGames(bot, env));
-        break;
-      default:
-        console.log(`No scheduled task for cron: ${controller.cron}`);
+      case CRON_LEVEL_UP_EVENTS:  ctx.waitUntil(sendLevelUpEvents(bot, env));   break;
+      case CRON_FREE_GAMES:       ctx.waitUntil(sendFreeGames(bot, env));       break;
+      default:                    console.log(`No scheduled task for cron: ${controller.cron}`);
     }
   },
 };
@@ -105,24 +102,25 @@ function createBot(env: Env): Bot {
   return bot;
 }
 
-async function sendLevelUpEvents(bot: Bot, env: Env) {
+export async function sendLevelUpEvents(bot: Bot, env: Env, debugOnly = false) {
   //TODO: implement event fetching
   const events = escMD("Scheduled message:\n⚠️ Event reminders are currently in development and not yet available.");
-  await sendToSubscribers(bot, env.DB, SubscriptionType.EVENTS_LUL, events);
+  await sendToSubscribers(bot, env.DB, SubscriptionType.EVENTS_LUL, events, debugOnly);
 }
 
-async function sendFreeGames(bot: Bot, env: Env) {
+export async function sendFreeGames(bot: Bot, env: Env, debugOnly = false) {
   const games = await fetchFreeGames();
-  await sendToSubscribers(bot, env.DB, SubscriptionType.FREE_GAMES, games);
+  await sendToSubscribers(bot, env.DB, SubscriptionType.FREE_GAMES, games, debugOnly);
 }
 
 async function sendToSubscribers(
   bot: Bot,
   db: D1Database,
   subType: SubscriptionType,
-  text: string
+  text: string,
+  debugOnly = false,
 ) {
-  const subs = await getAllSubscribers(db, subType);
+  const subs = await getAllSubscribers(db, subType, debugOnly);
 
   await Promise.all(subs.map(async (row) => {
     try {
@@ -135,44 +133,4 @@ async function sendToSubscribers(
 
 async function sendMessage(bot: Bot, chatId: string, text: string) {
   await bot.api.sendMessage(chatId, text, messageOptions);
-}
-
-function isDevRequest(request: Request): boolean {
-  const url = new URL(request.url);
-  return url.pathname.startsWith("/dev");
-}
-
-async function performDevActions(request: Request, env: Env): Promise<Response> {
-  const url = new URL(request.url);
-
-  const authHeader = request.headers.get("dev-api-key");
-  if (authHeader !== env.DEV_API_KEY) {
-    return new Response("Unauthorized", { status: 401 });
-  }
-
-  if (url.pathname === "/dev/sendevents") {
-    try {
-      await sendLevelUpEvents(createBot(env), env);
-    }
-    catch (err) {
-      return new Response(`Error sending LevelUp events: ${err}`, { status: 500 });
-    }
-
-    const eventSubsCount = await countSubscribers(env.DB, SubscriptionType.EVENTS_LUL);
-    return new Response(`Sent events to ${eventSubsCount} subscribers.`);
-  }
-
-  if (url.pathname === "/dev/sendgames") {
-    try {
-      await sendFreeGames(createBot(env), env);
-    }
-    catch (err) {
-      return new Response(`Error sending free games: ${err}`, { status: 500 });
-    }
-    
-    const freeGameSubsCount = await countSubscribers(env.DB, SubscriptionType.FREE_GAMES);
-    return new Response(`Sent free games to ${freeGameSubsCount} subscribers.`);
-  }
-  
-  return new Response("Dev command not found.", { status: 404 });
 }

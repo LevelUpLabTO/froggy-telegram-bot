@@ -78,19 +78,33 @@ export async function unsubscribe(
 export async function getAllSubscribers(
   db: D1Database,
   subType: SubscriptionType,
+  onlyDebug = false,
 ): Promise<ChatsRow[]> {
-  const { results } = await db.prepare(`SELECT id FROM ${tableName} WHERE ${subType} = 1`)
-    .all<ChatsRow>();
+  let query = `SELECT id FROM ${tableName} WHERE ${subType} = 1`;
+
+  if (onlyDebug) {
+    query += ` AND debug = 1`;
+  }
+
+  const { results } = await db.prepare(query).all<ChatsRow>();
   return results;
 }
 
-export async function countSubscribers(db: D1Database, subType: SubscriptionType): Promise<number> {
-  const { results } = await db.prepare(
-    `SELECT COUNT(*) as count FROM ${tableName} WHERE ${subType} = 1`
-  ).all<{ count: number }>();
+export async function countSubscribers(
+  db: D1Database,
+  subType: SubscriptionType,
+  onlyDebug = false,
+): Promise<number> {
+  let query = `SELECT COUNT(*) as count FROM ${tableName} WHERE ${subType} = 1`;
 
+  if (onlyDebug) {
+    query += ` AND debug = 1`;
+  }
+
+  const { results } = await db.prepare(query).all<{ count: number }>();
   return results[0]?.count ?? 0;
 }
+
 
 async function isSubscribed(db: D1Database, subType: SubscriptionType, chatId: number): Promise<boolean> {
   const { results } = await db.prepare(`SELECT 1 FROM ${tableName} WHERE id = ? AND ${subType} = 1`)
