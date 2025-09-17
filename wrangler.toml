@@ -5,8 +5,8 @@ compatibility_date = "2025-09-06"
 # IMPORTANT: Remember to update cron-triggers.ts with the same cron expressions
 [triggers]
 crons = [
-    "0 15 * * *",
-    "0 17 * * 5",
+    "20 15 * * *",
+    "20 15 * * 5",
     ]
 
 [[d1_databases]]
