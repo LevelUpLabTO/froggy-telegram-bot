@@ -1,4 +1,5 @@
 import { D1Database } from "@cloudflare/workers-types/experimental";
+import { safeReply } from "./bot";
 
 interface ChatsRow {
   id: number;
@@ -27,7 +28,7 @@ export async function subscribe(
   const subText = getSubText(subType);
   const exists = await isSubscribed(db, subType, ctx.chat.id);
   if (exists) {
-    await ctx.reply(`You are already subscribed to ${subText} notifications!`);
+    await safeReply(ctx, `You are already subscribed to ${subText} notifications!`);
   } else {
     await db.prepare(`INSERT OR IGNORE INTO ${tableName} (id) VALUES (?)`)
       .bind(ctx.chat.id)
@@ -36,7 +37,7 @@ export async function subscribe(
     // Set the subscription field to 1
     await setBoolField(ctx, db, subType, true);
 
-    await ctx.reply(`You have been subscribed to receive ${subText} notifications!`);
+    await safeReply(ctx, `You have been subscribed to receive ${subText} notifications!`);
   }
 }
 
@@ -49,7 +50,7 @@ export async function unsubscribe(
   const exists = await isSubscribed(db, subType, ctx.chat.id);
 
   if (!exists) {
-    await ctx.reply(`You were not subscribed to ${subText} notifications.`);
+    await safeReply(ctx, `You were not subscribed to ${subText} notifications.`);
     return;
   }
 
@@ -69,9 +70,9 @@ export async function unsubscribe(
     await db.prepare(`DELETE FROM ${tableName} WHERE id = ?`)
       .bind(ctx.chat.id)
       .run();
-    await ctx.reply(`You have been unsubscribed from all notifications.`);
+    await safeReply(ctx, `You have been unsubscribed from all notifications.`);
   } else {
-    await ctx.reply(`You have been unsubscribed from ${subText} notifications.`);
+    await safeReply(ctx, `You have been unsubscribed from ${subText} notifications.`);
   }
 }
 

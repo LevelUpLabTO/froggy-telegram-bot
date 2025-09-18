@@ -63,32 +63,19 @@ function createBot(env: Env): Bot {
       console.error("Unknown error:", e);
     }
 
-    ctx.reply("An error occurred while processing your request.");
+    safeReply(ctx, "An error occurred while processing your request.");
   });
 
   bot.command("start", async (ctx) => {
-      await ctx.reply(WELCOME_MESSAGE, messageOptions);
+      await safeReply(ctx, WELCOME_MESSAGE);
   });
 
   bot.command("help", async (ctx) => {
-      await ctx.reply(HELP_MESSAGE, messageOptions);
-  });
-
-  bot.command("freegames", async (ctx) => {
-    const games = await fetchFreeGames();
-    await ctx.reply(games, messageOptions);
-  });
-
-  bot.command("start_freegames", async (ctx) => {
-    await subscribe(ctx, env.DB, SubscriptionType.FREE_GAMES);
-  });
-
-  bot.command("stop_freegames", async (ctx) => {
-    await unsubscribe(ctx, env.DB, SubscriptionType.FREE_GAMES);
+      await safeReply(ctx, HELP_MESSAGE);
   });
 
   bot.command("events", async (ctx) => {
-    await ctx.reply(escMD("⚠️ Event reminders are currently in development and not yet available."), messageOptions);
+    await safeReply(ctx, escMD("⚠️ Event reminders are currently in development and not yet available."));
   });
 
   bot.command("start_events", async (ctx) => {
@@ -99,7 +86,40 @@ function createBot(env: Env): Bot {
     await unsubscribe(ctx, env.DB, SubscriptionType.EVENTS_LUL);
   });
 
+  bot.command("freegames", async (ctx) => {
+    const games = await fetchFreeGames();
+    await safeReply(ctx, games);
+  });
+
+  bot.command("start_freegames", async (ctx) => {
+    await subscribe(ctx, env.DB, SubscriptionType.FREE_GAMES);
+  });
+
+  bot.command("stop_freegames", async (ctx) => {
+    await unsubscribe(ctx, env.DB, SubscriptionType.FREE_GAMES);
+  });
+
   return bot;
+}
+
+export async function safeReply(ctx: any, text: string) {
+    try {
+        await ctx.reply(text, messageOptions);
+    } catch (err) {
+      if (err instanceof GrammyError) {
+            // Handle Telegram-specific errors (e.g., blocked bot, invalid chat ID)
+            console.error("Telegram error:", err.message);
+            await ctx.reply(escMD("⚠️ An error occurred while sending the message."), messageOptions);
+        } else if (err instanceof HttpError) {
+            // Handle HTTP-related errors (e.g., network issues)
+            console.error("HTTP error:", err.message);
+            await ctx.reply(escMD("⚠️ Network error. Please try again later."), messageOptions);
+        } else {
+            // Handle any other unexpected errors
+            console.error("Unknown error:", err);
+            await ctx.reply(escMD("❌ An unexpected error occurred."), messageOptions);
+        }
+    }
 }
 
 export async function sendLevelUpEvents(bot: Bot, env: Env, debugOnly = false) {
